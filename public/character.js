@@ -37,11 +37,11 @@ export default class Character {
     draw(c) {
         if (this.invisible) return;
     
-        // Draw character body
+
         c.fillStyle = this.color;
         c.fillRect(this.x, this.y, this.width, this.height);
     
-        // Draw attack or kick hitboxes in same color (on top)
+
         if (this.isAttacking) {
             const effect = this.getAttackHitbox();
             c.fillStyle = this.color;
@@ -53,8 +53,7 @@ export default class Character {
             c.fillStyle = this.color;
             c.fillRect(effect.x, effect.y, effect.width, effect.height);
         }
-    
-        // Optionally: highlight blocking/dodging
+
         if (this.isBlocking) {
             c.fillStyle = 'rgba(0, 0, 255, 0.4)';
             c.fillRect(this.x, this.y, this.width, this.height);
@@ -64,7 +63,7 @@ export default class Character {
             c.fillRect(this.x, this.y, this.width, this.height);
         }
     
-        // Facing indicator
+ 
         c.fillStyle = 'black';
         const indicatorX = this.facing === 'right'
             ? this.x + this.width - 10
@@ -73,14 +72,13 @@ export default class Character {
     }    
     
     update(deltaTime = 16.67) {
-        // Apply gravity
+  
         this.velocity.y += this.gravity;
         
-        // Update position
+      
         this.x += this.velocity.x * (deltaTime / 16.67);
         this.y += this.velocity.y * (deltaTime / 16.67);
-        
-        // Ground collision
+     
         if (this.y >= this.groundLevel) {
             this.y = this.groundLevel;
             this.velocity.y = 0;
@@ -89,7 +87,7 @@ export default class Character {
             this.onGround = false;
         }
         
-        // Screen boundaries
+
         this.x = Math.max(0, Math.min(1024 - this.width, this.x));
     }
 
@@ -156,7 +154,7 @@ export default class Character {
                 setTimeout(() => {
                     this.kickCooldown = false;
                 }, 300);
-            }, 500);  // Match attack()'s timing for visibility
+            }, 500);
     
             return this.getKickHitbox();
         }
@@ -167,7 +165,7 @@ export default class Character {
         const range = 60;
         return {
             x: this.facing === 'right' ? this.x + this.width : this.x - range,
-            y: this.y + this.height - 50, // Positioned near the feet
+            y: this.y + this.height - 50, 
             width: range,
             height: 40
         };
@@ -213,7 +211,7 @@ export default class Character {
     block() {
         if (!this.isBlocking && !this.isDodging) {
             this.isBlocking = true;
-            this.velocity.x *= 0.5; // Slow down while blocking
+            this.velocity.x *= 0.5; 
             setTimeout(() => {
                 this.isBlocking = false;
             }, 300);
@@ -237,7 +235,7 @@ export default class Character {
         } else if (!this.isDodging) {
             this.health = Math.max(0, this.health - amount);
         }
-        return this.health > 0; // Returns false if health <= 0
+        return this.health > 0; 
     }
     
     serialize() {
