@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skybound Clash</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    .text {
+      font-size: larger;
+    }
+    body {
+      transform: scale(0.7);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background-color: black;
+      font-family: Arial, sans-serif;
+      color: #fff;
+    }
+    .title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 60px;
+      font-weight: bold;
+      text-transform: uppercase;
+      color: orange;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 5px;
+      text-shadow: 0 0 5px orangered, 0 0 2px red;
+    }
+    .game-container {
+      width: 1024px;
+      max-width: 95%;
+      margin: 20px auto;
+      position: relative;
+    }
+    .header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    #timer {
+      transform: scale(0.86);
+      font-size: 24px;
+      color: black;
+      margin-bottom: 10px;
+      padding: 8px 15px 8px 50px;
+      background-color: blanchedalmond;
+      border: 2px solid grey; 
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+      background-image: url('https://cdn-icons-png.flaticon.com/128/3240/3240627.png');
+      background-repeat: no-repeat;
+      background-position: 10px center;
+      background-size: 24px 24px; 
+    }
+    .timer-text {
+      font-weight: bold;
+    }
+    .health-container {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 1024px;
+      margin-bottom: 10px;
+    }
+    .health-bar-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 45%;
+    }
+    .health-bar {
+    width: 100%;
+    height: 20px;
+    background-color: limegreen;
+    border-radius: 5px;
+    overflow: hidden;
+    position: relative;
+    margin-top: 5px;
+    transition: width 0.2s ease-in-out;
+}
+
+.player-health {
+    background-color: limegreen;
+}
+
+.enemy-health {
+    background-color: red;
+}
+    .health-bar::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 100%;
+      background-color: limegreen;
+      transition: width 0.2s ease-in-out;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      border: 2px solid white;
+      background-color: black;
+    }
+    #winner-text {
+  font-size: 2rem;
+  color: #fff;
+  text-align: center;
+  margin-top: 10px;
+  display: none;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.7), 0 0 20px rgba(255, 215, 0, 0.5);
+  padding: 15px;
+  border-radius: 8px;
+}
+    #matchmaking-container {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: rgba(0,0,0,0.8);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 100;
+      color: white;
+      transition: opacity 0.3s ease;
+    }
+    #matchmaking-button {
+      padding: 10px 20px;
+      font-size: 18px;
+      margin: 10px;
+      cursor: pointer;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+    #matchmaking-status {
+      margin: 10px;
+      font-size: 16px;
+    }
+    @media (max-width: 768px) {
+      .health-container {
+        flex-direction: column;
+        align-items: center;
+      }
+      .health-bar-wrapper {
+        width: 80%;
+      }
+      canvas {
+        width: 95%;
+      }
+    }
+    .searching::after {
+    content: "...";
+    animation: dots 1.5s infinite;
+}
+
+@keyframes dots {
+    0%, 20% { content: "."; }
+    40% { content: ".."; }
+    60%, 100% { content: "..."; }
+}
+  </style>
+</head>
+<body>
+  <br><br>
+  <div class="title">Skybound Clash</div><br><br><br>
+  
+  <!-- Matchmaking Container (should be outside game-container) -->
+  <div id="matchmaking-container">
+    <button id="matchmaking-button">Find Match</button>
+    <div id="matchmaking-status">Press "Find Match" to begin</div>
+  </div>
+
+  <div class="game-container">
+    <div class="header">
+      <div id="timer">
+        <span class="timer-text">Time: 10s</span>
+      </div>
+
+      <div class="health-container">
+        
+        <div class="health-bar-wrapper">
+          <span class="text">Player</span>
+          <div class="health-bar player-health"></div>
+        
+        </div>
+
+        <div class="health-bar-wrapper">
+          <span class="text">Enemy</span>
+          <div class="health-bar enemy-health"></div>
+        </div>
+
+      </div>
+
+    </div>
+    <canvas></canvas><br><br>
+    <h1 id="winner-text" style="display: none; font-size: 72px; text-align: center; text-shadow: 0 0 10px black;"></h1>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/index.js"></script>
+</body>
+</html>

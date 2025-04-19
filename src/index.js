@@ -1,0 +1,357 @@
+import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import Character from "../public/character.js";
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, { 
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
+app.use(express.static("public"));
+const PORT = 5000;
+
+// Game constants
+const GRAVITY = 0.7;
+const GROUND_Y = 426;
+const CANVAS_WIDTH = 1024;
+const MAX_PLAYERS_PER_LOBBY = 2;
+
+// Game state
+const lobbies = {};
+const players = {};
+
+class Lobby {
+    constructor(id) {
+        this.id = id;
+        this.players = [];
+        this.status = 'waiting';
+        this.gameOver = false;
+    }
+    
+    addPlayer(player) {
+        this.players.push(player);
+        player.lobbyId = this.id;
+        
+        if (this.players.length === MAX_PLAYERS_PER_LOBBY) {
+            this.status = 'playing';
+            this.startGame();
+            return true; // Game started
+        }
+        return false; // Still waiting
+    }
+    
+    removePlayer(playerId) {
+        this.players = this.players.filter(p => p.id !== playerId);
+        if (this.players.length === 0) {
+            delete lobbies[this.id];
+        } else {
+            io.to(this.id).emit('playerLeft', playerId);
+        }
+    }
+    
+    startGame() {
+        // Assign positions and colors
+        this.players.forEach((player, index) => {
+            const startX = index === 0 ? 100 : CANVAS_WIDTH - 150;
+            const color = index === 0 ? "darkblue" : "red";
+            
+            player.character = new Character(
+                player.id,
+                startX,
+                GROUND_Y,
+                color,
+                GRAVITY,
+                GROUND_Y
+            );
+            
+            player.socket.join(this.id);
+            player.socket.emit('gameStart', {
+                playerIndex: index,
+                lobbyId: this.id,
+                character: player.character.serialize()
+            });
+        });
+        
+        io.to(this.id).emit('currentPlayers', 
+            this.players.map(p => p.character.serialize())
+        );
+    }
+}
+
+function findAvailableLobby() {
+    for (const lobbyId in lobbies) {
+        if (lobbies[lobbyId].players.length < MAX_PLAYERS_PER_LOBBY && 
+            lobbies[lobbyId].status === 'waiting') {
+            return lobbies[lobbyId];
+        }
+    }
+    
+    const newLobbyId = `lobby_${Date.now()}`;
+    lobbies[newLobbyId] = new Lobby(newLobbyId);
+    return lobbies[newLobbyId];
+}
+
+function broadcastPlayerPosition(player, lobbyId) {
+    io.to(lobbyId).emit('playerPositionUpdate', player.serialize());
+}
+
+function isColliding(rect1, rect2) {
+    return rect1.x < rect2.x + rect2.width &&
+           rect1.x + rect1.width > rect2.x &&
+           rect1.y < rect2.y + rect2.height &&
+           rect1.y + rect1.height > rect2.y;
+}
+
+io.on("connection", (socket) => {
+    console.log(`Player connected: ${socket.id}`);
+    
+    // Initialize player
+    players[socket.id] = {
+        id: socket.id,
+        socket: socket,
+        lobbyId: null,
+        character: null
+    };
+
+    // Matchmaking handler
+    socket.on('joinMatchmaking', () => {
+        const player = players[socket.id];
+        if (player.lobbyId) {
+            socket.emit('matchmakingError', 'Already in a lobby');
+            return;
+        }
+        
+        const lobby = findAvailableLobby();
+        const gameStarted = lobby.addPlayer(player);
+        
+        socket.emit('matchmakingStatus', {
+            status: gameStarted ? 'playing' : 'waiting',
+            lobbyId: lobby.id,
+            playersInLobby: lobby.players.length,
+            playersNeeded: MAX_PLAYERS_PER_LOBBY - lobby.players.length
+        });
+    });
+
+    // Movement handler
+    socket.on('playerMove', (data) => {
+        const player = players[socket.id];
+        if (!player?.lobbyId || !player.character) return;
+        
+        const char = player.character;
+        const speed = 5;
+        
+        if (data.moving) {
+            char.velocity.x = data.direction === 'left' ? -speed : speed;
+            char.facing = data.direction;
+        } else {
+            char.velocity.x = 0;
+        }
+        
+        // Update position with validation
+        char.x = Math.max(0, Math.min(CANVAS_WIDTH - char.width, data.x));
+        char.y = data.y;
+        char.velocity.y = data.velocityY;
+        
+        broadcastPlayerPosition(char, player.lobbyId);
+    });
+
+    // Jump handler
+    socket.on('playerJump', () => {
+        const player = players[socket.id];
+        if (!player?.lobbyId || !player.character) return;
+        
+        const char = player.character;
+        if (char.onGround) {
+            char.velocity.y = -15;
+            char.onGround = false;
+            broadcastPlayerPosition(char, player.lobbyId);
+        }
+    });
+    function checkGameOver(lobby) {
+        if (lobby.gameOver) return true; // Already game over
+        
+        const alivePlayers = lobby.players.filter(p => p.character.health > 0);
+        if (alivePlayers.length === 1) {
+            // Game over, one player remaining
+            lobby.gameOver = true; // Set game over flag
+            
+            const winner = alivePlayers[0];
+            const loser = lobby.players.find(p => p !== winner);
+            
+            io.to(lobby.id).emit('gameOver', {
+                winnerId: winner.id,
+                loserId: loser?.id
+            });
+            
+            // Clean up the lobby after a delay
+            setTimeout(() => {
+                lobby.players.forEach(p => {
+                    p.socket.leave(lobby.id);
+                    p.lobbyId = null;
+                    p.character = null;
+                });
+                delete lobbies[lobby.id];
+            }, 5000);
+            
+            return true;
+        } else if (alivePlayers.length === 0) {
+            // Both players died at the same time
+            lobby.gameOver = true;
+            
+            io.to(lobby.id).emit('gameOver', {
+                winnerId: null,
+                loserId: null
+            });
+            
+            setTimeout(() => {
+                lobby.players.forEach(p => {
+                    p.socket.leave(lobby.id);
+                    p.lobbyId = null;
+                    p.character = null;
+                });
+                delete lobbies[lobby.id];
+            }, 5000);
+            
+            return true;
+        }
+        return false;
+    }
+
+// Modify attack handler
+socket.on('attack', () => {
+    const player = players[socket.id];
+    if (!player?.lobbyId || !player.character) return;
+    
+    const lobby = lobbies[player.lobbyId];
+    if (lobby.gameOver) return; 
+    const hitbox = player.character.attack();
+    
+    if (hitbox) {
+        lobby.players.forEach(otherPlayer => {
+            if (otherPlayer.id !== socket.id && otherPlayer.character) {
+                const otherBounds = otherPlayer.character.getBounds();
+                if (isColliding(hitbox, otherBounds)) {
+                    const isAlive = otherPlayer.character.takeDamage(8);
+                    
+                    io.to(lobby.id).emit('updateHealth', {
+                        playerId: otherPlayer.id,
+                        health: otherPlayer.character.health,
+                        color: otherPlayer.character.color
+                    });
+                    
+                    if (!isAlive) {
+                        checkGameOver(lobby);
+                    }
+                }
+            }
+        });
+    }
+    
+    io.to(lobby.id).emit('updatePlayer', player.character.serialize());
+});
+
+// Similar modification for kick handler
+socket.on('kick', () => {
+    const player = players[socket.id];
+    if (!player?.lobbyId || !player.character) return;
+
+    const lobby = lobbies[player.lobbyId];
+    if (lobby.gameOver) return;
+    const kickHitbox = player.character.kick();
+
+    if (kickHitbox) {
+        lobby.players.forEach(otherPlayer => {
+            if (otherPlayer.id !== socket.id && otherPlayer.character) {
+                const otherBounds = otherPlayer.character.getBounds();
+                if (isColliding(kickHitbox, otherBounds)) {
+                    const isAlive = otherPlayer.character.takeDamage(15);
+                    
+                    io.to(lobby.id).emit('updateHealth', {
+                        playerId: otherPlayer.id,
+                        health: otherPlayer.character.health,
+                        color: otherPlayer.character.color
+                    });
+                    
+                    if (!isAlive) {
+                        checkGameOver(lobby);
+                    }
+                }
+            }
+        });
+    }
+
+    io.to(lobby.id).emit('updatePlayer', player.character.serialize());
+});
+
+socket.on('playerDamaged', (data) => {
+    const player = players[data.playerId];
+    if (!player?.lobbyId || !player.character) return;
+    
+    const lobby = lobbies[player.lobbyId];
+    if (lobby.gameOver) return;
+    
+    io.to(lobby.id).emit('updateHealth', {
+        playerId: data.playerId,
+        health: player.character.health,
+        color: player.character.color
+    });
+    
+    checkGameOver(lobby);
+});
+    
+    socket.on('cancelMatchmaking', () => {
+        const player = players[socket.id];
+        if (!player?.lobbyId) return;
+        
+        const lobby = lobbies[player.lobbyId];
+        if (lobby) {
+            lobby.removePlayer(socket.id);
+        }
+    });
+
+    // Disconnect handler
+    socket.on('disconnect', () => {
+        console.log(`Player disconnected: ${socket.id}`);
+        const player = players[socket.id];
+        if (!player) return;
+        
+        if (player.lobbyId && lobbies[player.lobbyId]) {
+            lobbies[player.lobbyId].removePlayer(socket.id);
+        }
+        
+        delete players[socket.id];
+    });
+});
+
+setInterval(() => {
+    for (const lobbyId in lobbies) {
+        const lobby = lobbies[lobbyId];
+        if (lobby.status !== 'playing' || lobby.gameOver) continue;
+        
+        // Add this check at the beginning of the loop
+        if (lobby.gameOver) continue;
+        
+        lobby.players.forEach(player => {
+            if (!player.character) return;
+            
+            const char = player.character;
+            char.velocity.y += GRAVITY * (16/1000);
+            
+            char.x = Math.max(0, Math.min(CANVAS_WIDTH - char.width, char.x));
+            if (char.y > char.groundLevel) {
+                char.y = char.groundLevel;
+                char.velocity.y = 0;
+                char.onGround = true;
+            }
+            broadcastPlayerPosition(char, lobbyId);
+        });
+    }
+}, 16);
+
+httpServer.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
+});
