@@ -6,18 +6,15 @@ const c = canvas.getContext('2d');
 canvas.width = 1024;
 canvas.height = 576;
 
-// Game constants
 const GRAVITY = 0.7;
 const GROUND_LEVEL = canvas.height - 150;
 
-// Game assets
 const bgimg = new Image();
 bgimg.src = 'https://i.pinimg.com/736x/d1/48/4d/d1484dae779822c963b264fab4790f1e.jpg';
 let rocks = [], fires = [];
 let timeLeft = 10;
 let rockSpawnStart = null;
 let rockInterval, fireInterval;
-// Game state
 let characters = {};
 let lastUpdateTime = 0;
 let currentLobbyId = null;
@@ -27,20 +24,17 @@ const matchmakingButton = document.getElementById('matchmaking-button');
 const matchmakingStatus = document.getElementById('matchmaking-status');
 let isFindingMatch = false;
 
-// In the matchmaking button click handler:
 matchmakingButton.addEventListener('click', () => {
     if (isFindingMatch) {
-        // Cancel matchmaking
         socket.emit('cancelMatchmaking');
         matchmakingButton.textContent = 'Find Match';
         matchmakingStatus.textContent = 'Matchmaking cancelled';
-        matchmakingStatus.classList.remove('searching'); // Remove the class
+        matchmakingStatus.classList.remove('searching'); 
         isFindingMatch = false;
     } else {
-        // Start matchmaking
         matchmakingButton.textContent = 'Cancel';
         matchmakingStatus.textContent = 'Searching for opponent';
-        matchmakingStatus.classList.add('searching'); // Add the class
+        matchmakingStatus.classList.add('searching'); 
         socket.emit('joinMatchmaking');
         isFindingMatch = true;
     }
@@ -52,7 +46,6 @@ socket.on('gameStart', (data) => {
     matchmakingContainer.style.display = 'none';
     matchmakingStatus.classList.remove('searching');
     
-    // Reset game state
     document.getElementById('winner-text').style.display = 'none';
     rocks = [];
     fires = [];
@@ -64,14 +57,13 @@ socket.on('gameStart', (data) => {
     updateTimer();
 });
 
-// In the playerLeft handler:
 socket.on('playerLeft', (playerId) => {
     if (characters[playerId]) {
         delete characters[playerId];
         matchmakingContainer.style.display = 'block';
         document.getElementById('matchmaking-button').textContent = 'Find Match';
         document.getElementById('matchmaking-status').textContent = 'Opponent disconnected. Press "Find Match" to start a new game.';
-        matchmakingStatus.classList.remove('searching'); // Remove when opponent leaves
+        matchmakingStatus.classList.remove('searching'); 
     }
 });
 
@@ -81,7 +73,6 @@ function interpolatePlayers() {
             const char = characters[id];
             const lerpFactor = 0.2;
             
-            // Predict position based on velocity
             const predictedX = char.x + char.velocity.x * 0.1;
             const predictedY = char.y + char.velocity.y * 0.1;
             
@@ -91,13 +82,12 @@ function interpolatePlayers() {
     }
 }
 
-// Update keys object to be consistent
 const keys = {
     left: { pressed: false, sent: false },
     right: { pressed: false, sent: false },
     up: { pressed: false, sent: false }
 };
-// Replace the existing key event handlers with these:
+
 window.addEventListener('keydown', (e) => {
     if (!characters[socket.id]) return;
 
@@ -120,24 +110,24 @@ window.addEventListener('keydown', (e) => {
             }
             break;
 
-            case 'f': // Punch
+            case 'f': 
             console.log('Attack key pressed');
             socket.emit('attack');
             characters[socket.id].attack(); 
             break;
         
-        case 'g': // Kick
+        case 'g': 
             console.log('Kick key pressed');
             socket.emit('kick');
             characters[socket.id].kick(); 
             break;
         
 
-        case 'h': // Block
+        case 'h': 
             characters[socket.id].block();
             break;
 
-        case 'j': // Dodge
+        case 'j': 
             characters[socket.id].dodge();
             break;
     }
@@ -150,7 +140,6 @@ window.addEventListener('keyup', (e) => {
         case 'a':
         case 'ArrowLeft':
             keys.left.pressed = false;
-            // Explicitly send stop when left key is released
             socket.emit('playerMove', {
                 moving: false,
                 direction: 'left',
@@ -164,7 +153,6 @@ window.addEventListener('keyup', (e) => {
         case 'd':
         case 'ArrowRight':
             keys.right.pressed = false;
-            // Explicitly send stop when right key is released
             socket.emit('playerMove', {
                 moving: false,
                 direction: 'right',
@@ -201,7 +189,6 @@ function handleMovement() {
     let moving = false;
     let direction = null;
 
-    // Handle horizontal movement
     if (keys.left.pressed) {
         player.velocity.x = -speed;
         player.facing = 'left';
@@ -216,7 +203,6 @@ function handleMovement() {
         player.velocity.x = 0;
     }
     
-    // Handle jump (only send once per press)
     if (keys.up.pressed && !keys.up.sent && player.onGround) {
         player.velocity.y = -15;
         player.onGround = false;
@@ -224,7 +210,6 @@ function handleMovement() {
         keys.up.sent = true;
     }
     
-    // Only send movement updates if something changed
     if (moving && (!keys.left.sent || !keys.right.sent)) {
         socket.emit('playerMove', {
             moving: true,
@@ -243,7 +228,6 @@ function handleMovement() {
 socket.on('playerPositionUpdate', (playerData) => {
     if (!characters[playerData.id]) return;
     
-    // Only update remote players (not current client)
     if (playerData.id !== socket.id) {
         const character = characters[playerData.id];
         character.x = playerData.x;
@@ -254,7 +238,6 @@ socket.on('playerPositionUpdate', (playerData) => {
     }
 });
 
-// Initialize player
 const player = new Character(
     socket.id, 
     100, 
@@ -264,7 +247,6 @@ const player = new Character(
     GROUND_LEVEL
 );
 
-// Socket event handlers
 socket.on('currentPlayers', (players) => {
     characters = {};
     players.forEach(playerData => {
@@ -297,7 +279,6 @@ socket.on('updatePlayer', (playerData) => {
     
     const char = characters[playerData.id];
     
-    // Update all properties including health
     char.x = playerData.x;
     char.y = playerData.y;
     char.velocity.x = playerData.velocityX;
@@ -307,7 +288,6 @@ socket.on('updatePlayer', (playerData) => {
     char.isBlocking = playerData.isBlocking;
     char.health = playerData.health;
     
-    // Explicitly update the health bar
     const classSelector = char.color === 'darkblue' ? '.player-health' : '.enemy-health';
     const healthBar = document.querySelector(classSelector);
     if (healthBar) {
@@ -328,13 +308,11 @@ socket.on('gameOver', (data) => {
     
     winnerText.style.display = 'block';
     
-    // Clear all hazards
     clearInterval(rockInterval);
     clearInterval(fireInterval);
     rocks = [];
     fires = [];
     
-    // Show matchmaking button again after 3 seconds
     setTimeout(() => {
         matchmakingContainer.style.display = 'block';
         matchmakingButton.textContent = 'Play Again';
@@ -360,7 +338,6 @@ socket.on('updateHealth', (data) => {
     const healthBar = document.querySelector(classSelector);
     if (healthBar) {
         healthBar.style.width = `${data.health}%`;
-        // Add visual feedback when hit
         healthBar.style.backgroundColor = 'red';
         setTimeout(() => {
             healthBar.style.backgroundColor = data.color === 'darkblue' ? 'limegreen' : 'red';
@@ -462,7 +439,6 @@ function draw() {
         characters[id].draw(c);
     }
 
-    // ROCK LOGIC
 rocks.forEach((rock, i) => {
     rock.update();
     rock.draw(c);
@@ -481,7 +457,6 @@ rocks.forEach((rock, i) => {
 });
 rocks = rocks.filter(r => !r.offScreen);
 
-// FIRE LOGIC
 fires.forEach(fire => {
     fire.draw(c);
     Object.values(characters).forEach(char => fire.checkCollision(char));
@@ -496,19 +471,16 @@ function gameLoop(timestamp) {
         return;
     }
 
-    // Interpolate remote players
     for (let id in characters) {
         if (id !== socket.id) {
             const char = characters[id];
             const lerpFactor = 0.2;
             
-            // Only interpolate if we have a target position
             if (char.targetX !== undefined && char.targetY !== undefined) {
                 char.x += (char.targetX - char.x) * lerpFactor;
                 char.y += (char.targetY - char.y) * lerpFactor;
             }
             
-            // Update facing direction immediately
             if (char.facing !== char.prevFacing) {
                 char.facing = char.facing;
                 char.prevFacing = char.facing;
@@ -529,7 +501,6 @@ function gameLoop(timestamp) {
 }
 
 function updateTimer() {
-    // Skip if game is over
     if (document.getElementById('winner-text').style.display === 'block') {
         return;
     }
@@ -568,13 +539,11 @@ function shakeCanvas(callback) {
 function startRockSpawning() {
     rockSpawnStart = Date.now();
     
-    // Initial batch of rocks
     spawnRockBatch();
     
-    // Set interval for spawning batches of rocks
     rockInterval = setInterval(() => {
         spawnRockBatch();
-    }, 2000); // Spawn a batch every 2 seconds
+    }, 2000); 
 
     setTimeout(() => {
         clearInterval(rockInterval);
@@ -587,15 +556,13 @@ function startRockSpawning() {
 function spawnRockBatch() {
     let elapsed = rockSpawnStart ? (Date.now() - rockSpawnStart) / 1000 : 0;
     const baseRocks = 2;
-    const additionalRocks = Math.min(5, Math.floor(elapsed / 10)); // Add 1 rock every 10 seconds, max 5 extra
+    const additionalRocks = Math.min(5, Math.floor(elapsed / 10)); 
     
     for (let i = 0; i < baseRocks + additionalRocks; i++) {
         rocks.push(new Rock());
     }
 }
 
-
-// Start the game
 bgimg.onload = () => {
     console.log("Background loaded");
     requestAnimationFrame(gameLoop);
