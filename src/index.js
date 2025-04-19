@@ -14,13 +14,11 @@ const io = new Server(httpServer, {
 app.use(express.static("public"));
 const PORT = 5000;
 
-// Game constants
 const GRAVITY = 0.7;
 const GROUND_Y = 426;
 const CANVAS_WIDTH = 1024;
 const MAX_PLAYERS_PER_LOBBY = 2;
 
-// Game state
 const lobbies = {};
 const players = {};
 
@@ -39,9 +37,9 @@ class Lobby {
         if (this.players.length === MAX_PLAYERS_PER_LOBBY) {
             this.status = 'playing';
             this.startGame();
-            return true; // Game started
+            return true; 
         }
-        return false; // Still waiting
+        return false; 
     }
     
     removePlayer(playerId) {
@@ -54,7 +52,6 @@ class Lobby {
     }
     
     startGame() {
-        // Assign positions and colors
         this.players.forEach((player, index) => {
             const startX = index === 0 ? 100 : CANVAS_WIDTH - 150;
             const color = index === 0 ? "darkblue" : "red";
@@ -109,7 +106,6 @@ function isColliding(rect1, rect2) {
 io.on("connection", (socket) => {
     console.log(`Player connected: ${socket.id}`);
     
-    // Initialize player
     players[socket.id] = {
         id: socket.id,
         socket: socket,
@@ -117,7 +113,6 @@ io.on("connection", (socket) => {
         character: null
     };
 
-    // Matchmaking handler
     socket.on('joinMatchmaking', () => {
         const player = players[socket.id];
         if (player.lobbyId) {
@@ -136,7 +131,6 @@ io.on("connection", (socket) => {
         });
     });
 
-    // Movement handler
     socket.on('playerMove', (data) => {
         const player = players[socket.id];
         if (!player?.lobbyId || !player.character) return;
@@ -151,7 +145,6 @@ io.on("connection", (socket) => {
             char.velocity.x = 0;
         }
         
-        // Update position with validation
         char.x = Math.max(0, Math.min(CANVAS_WIDTH - char.width, data.x));
         char.y = data.y;
         char.velocity.y = data.velocityY;
@@ -159,7 +152,6 @@ io.on("connection", (socket) => {
         broadcastPlayerPosition(char, player.lobbyId);
     });
 
-    // Jump handler
     socket.on('playerJump', () => {
         const player = players[socket.id];
         if (!player?.lobbyId || !player.character) return;
@@ -172,13 +164,11 @@ io.on("connection", (socket) => {
         }
     });
     function checkGameOver(lobby) {
-        if (lobby.gameOver) return true; // Already game over
+        if (lobby.gameOver) return true; 
         
         const alivePlayers = lobby.players.filter(p => p.character.health > 0);
         if (alivePlayers.length === 1) {
-            // Game over, one player remaining
-            lobby.gameOver = true; // Set game over flag
-            
+            lobby.gameOver = true; 
             const winner = alivePlayers[0];
             const loser = lobby.players.find(p => p !== winner);
             
@@ -187,7 +177,6 @@ io.on("connection", (socket) => {
                 loserId: loser?.id
             });
             
-            // Clean up the lobby after a delay
             setTimeout(() => {
                 lobby.players.forEach(p => {
                     p.socket.leave(lobby.id);
@@ -199,7 +188,7 @@ io.on("connection", (socket) => {
             
             return true;
         } else if (alivePlayers.length === 0) {
-            // Both players died at the same time
+        
             lobby.gameOver = true;
             
             io.to(lobby.id).emit('gameOver', {
@@ -221,7 +210,7 @@ io.on("connection", (socket) => {
         return false;
     }
 
-// Modify attack handler
+
 socket.on('attack', () => {
     const player = players[socket.id];
     if (!player?.lobbyId || !player.character) return;
@@ -254,7 +243,7 @@ socket.on('attack', () => {
     io.to(lobby.id).emit('updatePlayer', player.character.serialize());
 });
 
-// Similar modification for kick handler
+
 socket.on('kick', () => {
     const player = players[socket.id];
     if (!player?.lobbyId || !player.character) return;
@@ -313,7 +302,6 @@ socket.on('playerDamaged', (data) => {
         }
     });
 
-    // Disconnect handler
     socket.on('disconnect', () => {
         console.log(`Player disconnected: ${socket.id}`);
         const player = players[socket.id];
@@ -332,7 +320,6 @@ setInterval(() => {
         const lobby = lobbies[lobbyId];
         if (lobby.status !== 'playing' || lobby.gameOver) continue;
         
-        // Add this check at the beginning of the loop
         if (lobby.gameOver) continue;
         
         lobby.players.forEach(player => {
