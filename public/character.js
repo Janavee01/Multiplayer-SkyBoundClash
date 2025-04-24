@@ -37,11 +37,9 @@ export default class Character {
     draw(c) {
         if (this.invisible) return;
     
-
         c.fillStyle = this.color;
         c.fillRect(this.x, this.y, this.width, this.height);
     
-
         if (this.isAttacking) {
             const effect = this.getAttackHitbox();
             c.fillStyle = this.color;
@@ -62,8 +60,7 @@ export default class Character {
             c.fillStyle = 'rgba(128, 0, 128, 0.4)';
             c.fillRect(this.x, this.y, this.width, this.height);
         }
-    
- 
+
         c.fillStyle = 'black';
         const indicatorX = this.facing === 'right'
             ? this.x + this.width - 10
@@ -72,13 +69,10 @@ export default class Character {
     }    
     
     update(deltaTime = 16.67) {
-  
         this.velocity.y += this.gravity;
-        
-      
         this.x += this.velocity.x * (deltaTime / 16.67);
         this.y += this.velocity.y * (deltaTime / 16.67);
-     
+        
         if (this.y >= this.groundLevel) {
             this.y = this.groundLevel;
             this.velocity.y = 0;
@@ -86,7 +80,6 @@ export default class Character {
         } else {
             this.onGround = false;
         }
-        
 
         this.x = Math.max(0, Math.min(1024 - this.width, this.x));
     }
@@ -142,8 +135,7 @@ export default class Character {
             height: 30
         };
     }
-    
-        
+
     kick() {
         if (!this.kickCooldown) {
             this.isKicking = true;
@@ -154,8 +146,7 @@ export default class Character {
                 setTimeout(() => {
                     this.kickCooldown = false;
                 }, 300);
-            }, 500);
-    
+            }, 500);  
             return this.getKickHitbox();
         }
         return null;
@@ -165,12 +156,12 @@ export default class Character {
         const range = 60;
         return {
             x: this.facing === 'right' ? this.x + this.width : this.x - range,
-            y: this.y + this.height - 50, 
+            y: this.y + this.height - 50,
             width: range,
             height: 40
         };
     }
-   
+
     getKickEffect() {
         return {
             x: this.facing === 'right' ? this.x + this.width : this.x - 30,
@@ -181,7 +172,7 @@ export default class Character {
             duration: 300
         };
     }
-       
+
     blink() {
         if (this.isBlinking) return;
         this.isBlinking = true;
@@ -228,7 +219,7 @@ export default class Character {
             }, 400);
         }
     }
-    
+
     takeDamage(amount) {
         if (this.isBlocking) {
             this.health = Math.max(0, this.health - (amount * 0.3));
@@ -237,7 +228,7 @@ export default class Character {
         }
         return this.health > 0; 
     }
-    
+
     serialize() {
         return {
             id: this.id,
