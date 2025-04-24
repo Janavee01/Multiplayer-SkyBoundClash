@@ -11,9 +11,6 @@
       padding: 0;
       box-sizing: border-box;
     }
-    .text {
-      font-size: larger;
-    }
     body {
       transform: scale(0.7);
       display: flex;
@@ -81,23 +78,24 @@
       width: 45%;
     }
     .health-bar {
-    width: 100%;
-    height: 20px;
-    background-color: limegreen;
-    border-radius: 5px;
-    overflow: hidden;
-    position: relative;
-    margin-top: 5px;
-    transition: width 0.2s ease-in-out;
-}
+      width: 100%;
+      height: 20px;
+      background-color: limegreen;
+      border-radius: 5px;
+      overflow: hidden;
+      position: relative;
+      margin-top: 5px;
+      transition: width 0.2s ease-in-out;
+    }
 
-.player-health {
-    background-color: limegreen;
-}
+    .player-health {
+      background-color: limegreen;
+    }
 
-.enemy-health {
-    background-color: red;
-}
+    .enemy-health {
+      background-color: red;
+    }
+
     .health-bar::after {
       content: "";
       position: absolute;
@@ -108,26 +106,29 @@
       background-color: limegreen;
       transition: width 0.2s ease-in-out;
     }
+
     canvas {
       display: block;
       width: 100%;
       border: 2px solid white;
       background-color: black;
     }
+
     #winner-text {
-  font-size: 2rem;
-  color: #fff;
-  text-align: center;
-  margin-top: 10px;
-  display: none;
-  font-family: 'Montserrat', sans-serif;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  text-shadow: 0 0 10px rgba(255, 215, 0, 0.7), 0 0 20px rgba(255, 215, 0, 0.5);
-  padding: 15px;
-  border-radius: 8px;
-}
+      font-size: 2rem;
+      color: #fff;
+      text-align: center;
+      margin-top: 10px;
+      display: none;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 10px rgba(255, 215, 0, 0.7), 0 0 20px rgba(255, 215, 0, 0.5);
+      padding: 15px;
+      border-radius: 8px;
+    }
+
     #matchmaking-container {
       position: fixed;
       top: 50%;
@@ -141,6 +142,7 @@
       color: white;
       transition: opacity 0.3s ease;
     }
+
     #matchmaking-button {
       padding: 10px 20px;
       font-size: 18px;
@@ -151,10 +153,12 @@
       border: none;
       border-radius: 5px;
     }
+
     #matchmaking-status {
       margin: 10px;
       font-size: 16px;
     }
+
     @media (max-width: 768px) {
       .health-container {
         flex-direction: column;
@@ -167,16 +171,17 @@
         width: 95%;
       }
     }
-    .searching::after {
-    content: "...";
-    animation: dots 1.5s infinite;
-}
 
-@keyframes dots {
-    0%, 20% { content: "."; }
-    40% { content: ".."; }
-    60%, 100% { content: "..."; }
-}
+    .searching::after {
+      content: "...";
+      animation: dots 1.5s infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: "."; }
+      40% { content: ".."; }
+      60%, 100% { content: "..."; }
+    }
   </style>
 </head>
 <body>
@@ -195,21 +200,18 @@
       </div>
 
       <div class="health-container">
-        
         <div class="health-bar-wrapper">
           <span class="text">Player</span>
           <div class="health-bar player-health"></div>
-        
         </div>
 
         <div class="health-bar-wrapper">
           <span class="text">Enemy</span>
           <div class="health-bar enemy-health"></div>
         </div>
-
       </div>
-
     </div>
+
     <canvas></canvas><br><br>
     <h1 id="winner-text" style="display: none; font-size: 72px; text-align: center; text-shadow: 0 0 10px black;"></h1>
   </div>
