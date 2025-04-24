@@ -1,8 +1,19 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import process from 'process';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import Character from "../public/character.js";
-
+import path from 'path';
+const CLIENTS_PER_SERVER = 4; 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+let redirectedPort = null;
+process.on('message', (message) => {
+    if (message.type === 'newServerCreated') {
+        redirectedPort = message.port;
+    }
+});
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, { 
@@ -11,13 +22,18 @@ const io = new Server(httpServer, {
         methods: ["GET", "POST"]
     }
 });
-app.use(express.static("public"));
-const PORT = 5000;
+
+app.use(express.static(path.join(__dirname, '../public')));
+const PORT = process.env.SERVER_PORT || 5000;
+const MAX_LOBBIES_PER_SERVER = 2; 
+const MAX_PLAYERS_PER_LOBBY = 2;
+const BASE_SERVER_PORT = 5000;
+
+const availableServers = [{ port: PORT, lobbyCount: 0, available: true }];
 
 const GRAVITY = 0.7;
 const GROUND_Y = 426;
 const CANVAS_WIDTH = 1024;
-const MAX_PLAYERS_PER_LOBBY = 2;
 
 const lobbies = {};
 const players = {};
@@ -33,23 +49,40 @@ class Lobby {
     addPlayer(player) {
         this.players.push(player);
         player.lobbyId = this.id;
-        
+        console.log(`[Lobby ${this.id}] Added player ${player.id}, total: ${this.players.length}`);
+    
         if (this.players.length === MAX_PLAYERS_PER_LOBBY) {
             this.status = 'playing';
             this.startGame();
-            return true; 
+            return true;
         }
-        return false; 
+    
+        return false;
     }
     
     removePlayer(playerId) {
         this.players = this.players.filter(p => p.id !== playerId);
+        console.log(`[Lobby ${this.id}] Player ${playerId} removed. Remaining: ${this.players.length}`);
+    
         if (this.players.length === 0) {
-            delete lobbies[this.id];
+            const server = availableServers.find(s => s.port === PORT);
+            if (server) server.lobbyCount = Math.max(0, server.lobbyCount - 1);
+
+            setTimeout(() => {
+                const stillEmpty = this.players.length === 0;
+                if (stillEmpty) {
+                    delete lobbies[this.id];
+                    console.log(`[Lobby ${this.id}] Deleted due to 0 players.`);
+                } else {
+                    console.log(`[Lobby ${this.id}] Not empty after timeout, not deleted.`);
+                }
+            }, 1000); 
         } else {
             io.to(this.id).emit('playerLeft', playerId);
         }
     }
+    
+    
     
     startGame() {
         this.players.forEach((player, index) => {
@@ -76,20 +109,67 @@ class Lobby {
         io.to(this.id).emit('currentPlayers', 
             this.players.map(p => p.character.serialize())
         );
+
+        setTimeout(() => {
+            if (!this.gameOver && this.status === 'playing') {
+                io.to(this.id).emit('pauseNotice', "⏸ 10 seconds passed! Game paused.");
+                this.players.forEach(p => {
+                    if (p.character) {
+                        p.character.velocity.x = 0;
+                        p.character.velocity.y = 0;
+                    }
+                });
+            }
+        }, 10000);
     }
 }
 
 function findAvailableLobby() {
+    const localServer = availableServers.find(s => s.port === PORT);
+    const currentPlayerCount = Object.keys(players).length;
+   
+    console.log(`Total lobbies: ${Object.keys(lobbies).length}`);
+
     for (const lobbyId in lobbies) {
-        if (lobbies[lobbyId].players.length < MAX_PLAYERS_PER_LOBBY && 
-            lobbies[lobbyId].status === 'waiting') {
-            return lobbies[lobbyId];
+        const lobby = lobbies[lobbyId];
+        console.log(`Existing lobby ${lobby.id}: ${lobby.players.length} players, status: ${lobby.status}`);
+        if (lobby.players.length < MAX_PLAYERS_PER_LOBBY && lobby.status === 'waiting') {
+            return { lobby, shouldRedirect: false };
         }
     }
-    
+
+    const totalPlayersOnServer = Object.values(players).filter(p => {
+        const lobby = p.lobbyId ? lobbies[p.lobbyId] : null;
+        return lobby && !lobby.gameOver;
+    }).length;
+
+    if (totalPlayersOnServer >= MAX_LOBBIES_PER_SERVER * MAX_PLAYERS_PER_LOBBY) {
+        if(process.send){
+        process.send({ type: 'requestNewServer' });
+        }
+
+        const newServerPort = redirectedPort || PORT + 1; 
+        return {
+            lobby: null,
+            shouldRedirect: true,
+            newServerPort,
+            message: `Server full, redirecting to new server on port ${newServerPort}`
+        };
+    }
+
     const newLobbyId = `lobby_${Date.now()}`;
-    lobbies[newLobbyId] = new Lobby(newLobbyId);
-    return lobbies[newLobbyId];
+    const newLobby = new Lobby(newLobbyId);
+    lobbies[newLobbyId] = newLobby;
+
+    if (localServer) {
+        localServer.lobbyCount++;
+    }
+
+    return { lobby: newLobby, shouldRedirect: false };
+}
+
+function nextAvailablePort() {
+    return PORT + 1;
 }
 
 function broadcastPlayerPosition(player, lobbyId) {
@@ -105,7 +185,7 @@ function isColliding(rect1, rect2) {
 
 io.on("connection", (socket) => {
     console.log(`Player connected: ${socket.id}`);
-    
+
     players[socket.id] = {
         id: socket.id,
         socket: socket,
@@ -120,17 +200,21 @@ io.on("connection", (socket) => {
             return;
         }
         
-        const lobby = findAvailableLobby();
-        const gameStarted = lobby.addPlayer(player);
-        
-        socket.emit('matchmakingStatus', {
-            status: gameStarted ? 'playing' : 'waiting',
-            lobbyId: lobby.id,
-            playersInLobby: lobby.players.length,
-            playersNeeded: MAX_PLAYERS_PER_LOBBY - lobby.players.length
-        });
-    });
+        const result = findAvailableLobby();
 
+        if (!result.shouldRedirect && result.lobby) {
+            const added = result.lobby.addPlayer(player);
+            console.log(`[Matchmaking] Player ${socket.id} added to lobby ${result.lobby.id}`);
+            
+            io.to(socket.id).emit('matchmakingStatus', {
+                status: added ? 'matched' : 'waiting',
+                playersInLobby: result.lobby.players.length,
+                playersNeeded: MAX_PLAYERS_PER_LOBBY - result.lobby.players.length
+            });
+        }
+        
+    });
+      
     socket.on('playerMove', (data) => {
         const player = players[socket.id];
         if (!player?.lobbyId || !player.character) return;
@@ -169,6 +253,7 @@ io.on("connection", (socket) => {
         const alivePlayers = lobby.players.filter(p => p.character.health > 0);
         if (alivePlayers.length === 1) {
             lobby.gameOver = true; 
+            
             const winner = alivePlayers[0];
             const loser = lobby.players.find(p => p !== winner);
             
@@ -188,7 +273,6 @@ io.on("connection", (socket) => {
             
             return true;
         } else if (alivePlayers.length === 0) {
-        
             lobby.gameOver = true;
             
             io.to(lobby.id).emit('gameOver', {
@@ -209,7 +293,6 @@ io.on("connection", (socket) => {
         }
         return false;
     }
-
 
 socket.on('attack', () => {
     const player = players[socket.id];
@@ -242,7 +325,6 @@ socket.on('attack', () => {
     
     io.to(lobby.id).emit('updatePlayer', player.character.serialize());
 });
-
 
 socket.on('kick', () => {
     const player = players[socket.id];
@@ -303,12 +385,21 @@ socket.on('playerDamaged', (data) => {
     });
 
     socket.on('disconnect', () => {
+        if (process.send) {
+            process.send({
+                type: 'clientDisconnected',
+                port: PORT
+            });
+        }
         console.log(`Player disconnected: ${socket.id}`);
         const player = players[socket.id];
         if (!player) return;
         
         if (player.lobbyId && lobbies[player.lobbyId]) {
-            lobbies[player.lobbyId].removePlayer(socket.id);
+            const lobby = lobbies[player.lobbyId];
+                lobby.removePlayer(socket.id);
+            console.log(`[Lobby ${lobby.id}] Player ${socket.id} removed. Remaining: ${lobby.players.length}`);
+
         }
         
         delete players[socket.id];
@@ -339,6 +430,8 @@ setInterval(() => {
     }
 }, 16);
 
-httpServer.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-});
+export default function startServer() {
+    httpServer.listen(PORT, () => {
+        console.log(`Server running at http://localhost:${PORT}`);
+    });
+}
