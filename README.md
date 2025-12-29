@@ -48,7 +48,7 @@ Skybound Clash is a real-time 2D multiplayer fighting game built with **Node.js*
 ---
 
 ## Project Structure
-
+```
 Multiplayer-SkyBoundClash/
 ├── public/
 │ ├── character.js # Player character class (state and actions)
@@ -60,7 +60,7 @@ Multiplayer-SkyBoundClash/
 ├── .gitignore
 ├── package.json
 └── package-lock.json
-
+```
 yaml
 Copy code
 
