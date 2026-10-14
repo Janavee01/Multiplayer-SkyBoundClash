@@ -1,3 +1,12 @@
+const ATTACK_ACTIVE_MS = 500;
+const ATTACK_READY_MS = 800;
+const KICK_ACTIVE_MS = 500;
+const KICK_READY_MS = 800;
+const BLOCK_MS = 300;
+const DODGE_MS = 400;
+const BLINK_MS = 600;
+const BLINK_STEP_MS = 100;
+
 export default class Character {
     constructor(id, x, y, color, gravity = 0.7, groundLevel = 400) {
         this.id = id;
@@ -13,16 +22,21 @@ export default class Character {
         this.isAttacking = false;
         this.isBlocking = false;
         this.isDodging = false;
-        this.kickCooldown = false;
         this.isKicking = false;
         this.invisible = false;
         this.isBlinking = false;
         this.facing = 'right';
-        this.attackCooldown = false;
-        this.animationState = 'idle';
         this.onGround = false;
-        this.targetX = undefined;
-        this.targetY = undefined;
+        this.targetX = x;
+        this.targetY = y;
+        this.attackUntil = 0;
+        this.attackReadyAt = 0;
+        this.kickUntil = 0;
+        this.kickReadyAt = 0;
+        this.blockUntil = 0;
+        this.dodgeUntil = 0;
+        this.blinkStart = -Infinity;
+        this.blinkUntil = 0;
     }
 
     getBounds() {
@@ -67,63 +81,13 @@ export default class Character {
             : this.x + 10;
         c.fillRect(indicatorX, this.y + 10, 5, 5);
     }    
-    
-    update(deltaTime = 16.67) {
-        this.velocity.y += this.gravity;
-        this.x += this.velocity.x * (deltaTime / 16.67);
-        this.y += this.velocity.y * (deltaTime / 16.67);
-        
-        if (this.y >= this.groundLevel) {
-            this.y = this.groundLevel;
-            this.velocity.y = 0;
-            this.onGround = true;
-        } else {
-            this.onGround = false;
-        }
 
-        this.x = Math.max(0, Math.min(1024 - this.width, this.x));
-    }
-
-    move(direction){
-        const speed = 5;
-        const jumpForce = 15;
-        
-        switch(direction) {
-            case 'left':
-                this.velocity.x = -speed;
-                this.facing = 'left';
-                break;
-            case 'right':
-                this.velocity.x = speed;
-                this.facing = 'right';
-                break;
-            case 'up':
-                if (this.onGround) {
-                    this.velocity.y = -jumpForce;
-                    this.onGround = false;
-                }
-                break;
-            case 'stop':
-                this.velocity.x = 0;
-                break;
-        }
-    }
-
-    attack() {
-        if (!this.attackCooldown && !this.isAttacking) {
-            this.isAttacking = true;
-            this.attackCooldown = true;
-            
-            setTimeout(() => {
-                this.isAttacking = false;
-                setTimeout(() => {
-                    this.attackCooldown = false;
-                }, 300);
-            }, 500);
-            
-            return this.getAttackHitbox();
-        }
-        return null;
+    attack(now = Date.now()) {
+        if (now < this.attackReadyAt || now < this.kickUntil) return null;
+        this.attackUntil = now + ATTACK_ACTIVE_MS;
+        this.attackReadyAt = now + ATTACK_READY_MS;
+        this.isAttacking = true;
+        return this.getAttackHitbox();
     }
 
     getAttackHitbox() {
@@ -136,22 +100,14 @@ export default class Character {
         };
     }
 
-    kick() {
-        if (!this.kickCooldown) {
-            this.isKicking = true;
-            this.kickCooldown = true;
-    
-            setTimeout(() => {
-                this.isKicking = false;
-                setTimeout(() => {
-                    this.kickCooldown = false;
-                }, 300);
-            }, 500);  
-            return this.getKickHitbox();
-        }
-        return null;
-    }    
-    
+    kick(now = Date.now()) {
+        if (now < this.kickReadyAt || now < this.attackUntil) return null;
+        this.kickUntil = now + KICK_ACTIVE_MS;
+        this.kickReadyAt = now + KICK_READY_MS;
+        this.isKicking = true;
+        return this.getKickHitbox();
+    }
+
     getKickHitbox() {
         const range = 60;
         return {
@@ -162,62 +118,38 @@ export default class Character {
         };
     }
 
-    getKickEffect() {
-        return {
-            x: this.facing === 'right' ? this.x + this.width : this.x - 30,
-            y: this.y + this.height / 2 - 20,
-            width: 90,
-            height: 40,
-            color: 'rgba(100, 100, 255, 0.7)',
-            duration: 300
-        };
-    }
-
-    blink() {
-        if (this.isBlinking) return;
+    blink(now = Date.now()) {
+        if (now < this.blinkUntil) return;
+        this.blinkStart = now;
+        this.blinkUntil = now + BLINK_MS;
         this.isBlinking = true;
-        let count = 0;
-        const interval = setInterval(() => {
-            this.invisible = !this.invisible;
-            count++;
-            if (count >= 6) {
-                clearInterval(interval);
-                this.invisible = false;
-                this.isBlinking = false;
-            }
-        }, 100);
-    }    
-
-    getAttackEffect() {
-        return {
-            x: this.facing === 'right' ? this.x + this.width : this.x - 20,
-            y: this.y + this.height/2 - 25,
-            width: 80,
-            height: 50,
-            color: 'rgba(255, 100, 100, 0.7)',
-            duration: 300
-        };
     }
 
-    block() {
-        if (!this.isBlocking && !this.isDodging) {
-            this.isBlocking = true;
-            this.velocity.x *= 0.5; 
-            setTimeout(() => {
-                this.isBlocking = false;
-            }, 300);
-        }
+    updateBlink(now = Date.now()) {
+        const active = now < this.blinkUntil;
+        this.isBlinking = active;
+        this.invisible = active &&
+            Math.floor((now - this.blinkStart) / BLINK_STEP_MS) % 2 === 1;
     }
 
-    dodge() {
-        if (!this.isDodging && !this.isBlocking) {
-            this.isDodging = true;
-            this.velocity.x = this.facing === 'right' ? 15 : -15;
-            setTimeout(() => {
-                this.isDodging = false;
-                this.velocity.x = 0;
-            }, 400);
-        }
+    update(now = Date.now()) {
+        this.isAttacking = now < this.attackUntil;
+        this.isKicking = now < this.kickUntil;
+        this.isBlocking = now < this.blockUntil;
+        this.isDodging = now < this.dodgeUntil;
+        this.updateBlink(now);
+    }
+
+    block(now = Date.now()) {
+        if (now < this.blockUntil || now < this.dodgeUntil) return;
+        this.blockUntil = now + BLOCK_MS;
+        this.isBlocking = true;
+    }
+
+    dodge(now = Date.now()) {
+        if (now < this.dodgeUntil || now < this.blockUntil) return;
+        this.dodgeUntil = now + DODGE_MS;
+        this.isDodging = true;
     }
 
     takeDamage(amount) {
@@ -238,6 +170,8 @@ export default class Character {
             health: this.health,
             isAttacking: this.isAttacking,
             isBlocking: this.isBlocking,
+            isDodging: this.isDodging,
+            isKicking: this.isKicking,
             velocityX: this.velocity.x,
             velocityY: this.velocity.y,
             facing: this.facing

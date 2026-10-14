@@ -1,42 +1,36 @@
 # Skybound Clash
 
-Skybound Clash is a real-time 2D multiplayer fighting game built with **Node.js**, **Express**, and **Socket.IO**. It features a scalable server architecture using the Node.js **cluster module** to handle multiple game lobbies and distribute player load efficiently.
+Skybound Clash is a real-time 2D multiplayer fighting game built with **Node.js**, **Express**, and **Socket.IO**. A single authoritative server process hosts all game lobbies and runs the game simulation.
 
 ---
 
 ## Features
 
 - **Real-Time Multiplayer Combat**: Engage in fast-paced fights against another player.  
-- **Scalable Server Architecture**: Automatically spawns new server processes on different ports as player count grows, ensuring smooth performance.  
-- **Automated Matchmaking**: Simple matchmaking system that places players into available game lobbies.  
+- **Private Lobby Matchmaking**: Create a room and share its code, or join a friend's room with a code.  
+- **Server-Authoritative Simulation**: The server owns player positions, physics, combat, health, and hazards; clients only send inputs and render the result.  
 - **Dynamic In-Game Events**: After an initial countdown, the arena becomes hazardous with falling rocks and erupting fire walls to intensify the endgame.  
-- **Basic Combat System**: Includes punching, kicking, and health mechanics.  
+- **Basic Combat System**: Includes punching, kicking, blocking, dodging, and health mechanics.  
 - **Client-Side Rendering**: Uses HTML5 Canvas to render the game, managed by client-side JavaScript.  
 
 ---
 
 ## Tech Stack
 
-**Backend**: Node.js, Express, Socket.IO, Node.js Cluster Module  
+**Backend**: Node.js, Express, Socket.IO  
 **Frontend**: HTML5 Canvas, JavaScript (ES Modules), CSS  
-**Development**: nodemon for automatic server restarts  
+**Development**: nodemon for automatic restarts, ESLint for linting, Node's built-in test runner  
 
 ---
 
 ## How It Works
 
-### Server Scaling (`src/cluster.js`)
-- When the application starts, a primary cluster process is initiated.  
-- The primary process spawns an initial worker process (`src/index.js`) on a base port (e.g., 5000).  
-- The primary process monitors messages from its workers. If a worker reports it is full, the primary process spawns a new worker on the next available port (e.g., 5001).  
-
-### Matchmaking & Redirection (`src/index.js`)
-- Players are handled by one of the worker processes when they connect.  
-- Clicking "Find Match" joins the matchmaking queue.  
-- The server tries to find a lobby with a waiting player. If none exists, a new lobby is created.  
-- If a server instance reaches maximum lobby capacity, it sends a `requestNewServer` message to the primary cluster process.  
-- The primary process creates a new server and sends the new port number back to the worker.  
-- The worker emits a `redirectToServer` event to the player's client, instructing them to reconnect to the new server port.  
+### Lobby & Matchmaking (`src/index.js`)
+- The server hosts every lobby in a single process.  
+- **Create Private Room** generates a unique 6-character code and a waiting lobby.  
+- **Join** looks up the lobby by code and adds the second player.  
+- When a lobby reaches two players, the server starts the match and runs the simulation for it.  
+- If a player cancels while waiting, or disconnects mid-match, the server cleans up the lobby and (mid-match) awards the win to the remaining player.
 
 ### Gameplay (`public/index.js` & `src/index.js`)
 - Once two players are in a lobby, the game begins.  
@@ -55,8 +49,11 @@ Multiplayer-SkyBoundClash/
 │ ├── index.html # Main HTML file, game canvas, UI
 │ └── index.js # Client-side logic, rendering, socket communication
 ├── src/
-│ ├── cluster.js # Primary process for spawning and managing servers
-│ └── index.js # Main game server logic (lobbies, player state)
+│ └── index.js # Main game server logic (lobbies, player state, physics, hazards)
+├── test/
+│ └── character.test.js # Unit tests for character mechanics
+├── eslint.config.js # ESLint flat config
+├── .env.example # Example environment variables
 ├── .gitignore
 ├── package.json
 └── package-lock.json
@@ -68,7 +65,7 @@ Multiplayer-SkyBoundClash/
 ## Setup and Installation
 
 ### Prerequisites
-- **Node.js** (v14 or higher)  
+- **Node.js** (v20 or higher)  
 - **npm** (included with Node.js)  
 
 ### Instructions
@@ -76,16 +73,31 @@ Multiplayer-SkyBoundClash/
 ```bash
 git clone https://github.com/Janavee01/Multiplayer-SkyBoundClash.git
 cd Multiplayer-SkyBoundClash
+```
 
-Install dependencies:
+2. Install dependencies:
+```bash
 npm install
-Start the server:
+```
 
-Using nodemon (recommended for development):
-npm run dev
+3. Start the server (loads `.env` automatically when present):
+```bash
+npm run dev    # nodemon, restarts on file changes
+npm start      # or: node src/index.js
+```
 
-Without nodemon:
-node src/cluster.js
+### Configuration
+Copy `.env.example` to `.env` to override defaults:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SERVER_PORT` | `5000` | Port the server listens on. |
+| `ALLOWED_ORIGINS` | `http://localhost:${SERVER_PORT}` | Comma-separated origins allowed to open a Socket.IO connection. Set this to your deployed origin(s). |
+
+### Development scripts
+```bash
+npm test     # run the unit tests (Node's built-in test runner)
+npm run lint # lint the source with ESLint
 ```
 
 ## Play the game:
@@ -93,7 +105,7 @@ Open your web browser and navigate to http://localhost:5000.
 
 ## To test multiplayer, open a second browser tab/window and navigate to the same address.
 
-## Click "Find Match" in both windows to be paired against each other.
+## Create a Private Room in one window, then enter its code in the other window to join.
 
 ## Game Controls
 Move Left: A or Left Arrow
@@ -105,3 +117,7 @@ Jump: W or Up Arrow
 Punch: F key
 
 Kick: G key
+
+Block: H key
+
+Dodge: J key

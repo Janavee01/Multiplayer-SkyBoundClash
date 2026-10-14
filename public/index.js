@@ -8,89 +8,124 @@ canvas.height = 576;
 const GRAVITY = 0.7;
 const GROUND_LEVEL = canvas.height - 150;
 const matchmakingContainer = document.getElementById('matchmaking-container');
-const matchmakingButton = document.getElementById('matchmaking-button');
 const matchmakingStatus = document.getElementById('matchmaking-status');
+const createRoomButton = document.getElementById('create-room-button');
+const joinRoomButton = document.getElementById('join-room-button');
+const roomCodeInput = document.getElementById('room-code-input');
+const roomControls = document.getElementById('room-controls');
+const roomCodeDisplay = document.getElementById('room-code-display');
+const roomJoin = document.querySelector('.room-join');
+const countdownEl = document.getElementById('countdown');
+const countdownNumber = document.getElementById('countdown-number');
+const countdownLabel = document.getElementById('countdown-label');
 const bgimg = new Image();
 bgimg.src = 'https://i.pinimg.com/736x/d1/48/4d/d1484dae779822c963b264fab4790f1e.jpg';
 
+let countdownTimeout;
+let hideTimeout;
+
+function showCountdown(seconds) {
+    clearTimeout(countdownTimeout);
+    clearTimeout(hideTimeout);
+    countdownEl.classList.remove('fade', 'flash');
+    countdownEl.classList.add('show');
+    countdownLabel.textContent = 'Hazards incoming';
+    countdownNumber.textContent = seconds;
+    countdownNumber.classList.remove('tick');
+    void countdownNumber.offsetWidth;
+    countdownNumber.classList.add('tick');
+}
+
+function finishCountdown() {
+    countdownNumber.textContent = '!';
+    countdownLabel.textContent = 'Hazards!';
+    countdownEl.classList.add('flash');
+    hideTimeout = setTimeout(() => {
+        countdownEl.classList.add('fade');
+        setTimeout(() => countdownEl.classList.remove('show', 'flash', 'fade'), 700);
+    }, 900);
+}
+
+function hideCountdown() {
+    clearTimeout(countdownTimeout);
+    clearTimeout(hideTimeout);
+    countdownEl.classList.remove('show', 'flash', 'fade');
+}
+
 let rocks = [], fires = [];
 let timeLeft = 10;
-let rockSpawnStart = null;
-let rockInterval, fireInterval;
 let characters = {};
-let lastUpdateTime = 0;
-let currentLobbyId = null;
-let playerIndex = null;
-let isFindingMatch = false;
-let lastTriedPort = 5000;
-function init(port = 5000){
-    lastTriedPort = port;
-    socket = io(`ws://localhost:${port}`);
+let isQueued = false;
+
+function resetMatchmakingUI(message) {
+    isQueued = false;
+    createRoomButton.textContent = 'Create Private Room';
+    roomControls.style.display = 'flex';
+    roomJoin.style.display = 'flex';
+    roomCodeDisplay.style.display = 'none';
+    roomCodeInput.value = '';
+    matchmakingStatus.classList.remove('searching');
+    matchmakingStatus.textContent = message || 'Create a private room or join one with a code';
+}
+function init(){
+    socket = io();
 
     socket.on('connect_error', () => {
         console.warn('Connection error. Retrying in 1s...');
-        setTimeout(() => init(lastTriedPort), 1000);
+        setTimeout(() => init(), 1000);
     });
 
-    socket.on('gameStart', (data) => {
-        currentLobbyId = data.lobbyId;
-        playerIndex = data.playerIndex;
+    socket.on('gameStart', () => {
         matchmakingContainer.style.display = 'none';
         matchmakingStatus.classList.remove('searching');
+        isQueued = false;
         
         document.getElementById('winner-text').style.display = 'none';
         rocks = [];
         fires = [];
         timeLeft = 10;
-        clearInterval(rockInterval);
-        clearInterval(fireInterval);
-        rockSpawnStart = null;
-        
+
+        showCountdown(timeLeft);
         updateTimer();
     });
 
     socket.on('playerPositionUpdate', (playerData) => {
-        if (!characters[playerData.id]) return;
-        if (playerData.id !== socket.id) {
-            const character = characters[playerData.id];
-            character.x = playerData.x;
-            character.y = playerData.y;
-            character.velocity.x = playerData.velocityX;
-            character.velocity.y = playerData.velocityY;
-            character.facing = playerData.facing;
-        }
-    });
+        const character = characters[playerData.id];
+        if (!character) return;
 
-socket.on('redirectToServer', (data) => {
-    console.log('Redirecting to new server:', data.message);
-    socket.disconnect();
-    init(data.newServerPort); // Connect to the new port
-    setTimeout(() => {
-        if (isFindingMatch) {
-            socket.emit('joinMatchmaking');
-        }
-    }, 500);
-});
+        character.targetX = playerData.x;
+        character.targetY = playerData.y;
+        character.velocity.x = playerData.velocityX;
+        character.velocity.y = playerData.velocityY;
+        character.facing = playerData.facing;
+    });
 
     socket.on('playerLeft', (playerId) => {
         if (characters[playerId]) {
             delete characters[playerId];
+            hideCountdown();
             matchmakingContainer.style.display = 'block';
-            matchmakingButton.textContent = 'Find Match';
-            matchmakingStatus.textContent = 'Opponent disconnected. Press "Find Match" to start a new game.';
-            matchmakingStatus.classList.remove('searching');
+            resetMatchmakingUI('Opponent disconnected. Create or join a room to play again.');
         }
     });
 
-    socket.on('matchmakingStatus', (data) => {
-        matchmakingStatus.textContent = `Status: ${data.status}. Players: ${data.playersInLobby}/${data.playersNeeded + data.playersInLobby}`;
-        
-        if (data.status === 'waiting') {
-            matchmakingButton.disabled = false;
-            matchmakingButton.textContent = 'Cancel Matchmaking';
-        } else {
-            matchmakingButton.style.display = 'none';
-        }
+    socket.on('lobbyCreated', (data) => {
+        isQueued = true;
+        roomJoin.style.display = 'none';
+        roomCodeDisplay.style.display = 'block';
+        roomCodeDisplay.textContent = `Room code: ${data.code}`;
+        matchmakingStatus.textContent = `Waiting for opponent to join with code ${data.code}`;
+        matchmakingStatus.classList.add('searching');
+        createRoomButton.textContent = 'Cancel Room';
+    });
+
+    socket.on('lobbyJoined', () => {
+        matchmakingStatus.textContent = 'Opponent found! Starting match...';
+        matchmakingStatus.classList.remove('searching');
+    });
+
+    socket.on('lobbyError', (data) => {
+        resetMatchmakingUI(data?.message || 'Unable to join room');
     });
 
     socket.on('currentPlayers', (players) => {
@@ -124,13 +159,15 @@ socket.on('redirectToServer', (data) => {
         if (!characters[playerData.id]) return;
 
         const char = characters[playerData.id];
-        char.x = playerData.x;
-        char.y = playerData.y;
+        char.targetX = playerData.x;
+        char.targetY = playerData.y;
         char.velocity.x = playerData.velocityX;
         char.velocity.y = playerData.velocityY;
         char.facing = playerData.facing;
         char.isAttacking = playerData.isAttacking;
         char.isBlocking = playerData.isBlocking;
+        char.isDodging = playerData.isDodging;
+        char.isKicking = playerData.isKicking;
         char.health = playerData.health;
 
         const classSelector = char.color === 'darkblue' ? '.player-health' : '.enemy-health';
@@ -153,15 +190,13 @@ socket.on('redirectToServer', (data) => {
 
         winnerText.style.display = 'block';
 
-        clearInterval(rockInterval);
-        clearInterval(fireInterval);
+        hideCountdown();
         rocks = [];
         fires = [];
 
         setTimeout(() => {
             matchmakingContainer.style.display = 'block';
-            matchmakingButton.textContent = 'Play Again';
-            matchmakingStatus.textContent = 'Press "Play Again" to start a new match';
+            resetMatchmakingUI('Create or join a room to play again.');
         }, 3000);
     });
 
@@ -170,7 +205,7 @@ socket.on('redirectToServer', (data) => {
     });
 
     socket.on('connect', () => {
-        console.log(`Connected to ${lastTriedPort}`);
+        console.log(`Connected to ${window.location.origin}`);
         console.log("Connected with socket id:", socket.id);
     });
 
@@ -178,11 +213,6 @@ socket.on('redirectToServer', (data) => {
         alert(data.message);
         socket.disconnect();
     });
-
-    socket.on('pauseNotice', (msg) => {
-        alert(msg); 
-    });
-    
 
     socket.on('updateHealth', (data) => {
         const classSelector = data.color === 'darkblue' ? '.player-health' : '.enemy-health';
@@ -195,203 +225,118 @@ socket.on('redirectToServer', (data) => {
             }, 200);
         }
     });
+
+    socket.on('hazardsUpdate', (data) => {
+        rocks = data.rocks;
+        fires = data.fires;
+    });
+
+    socket.on('hazardHit', (data) => {
+        const char = characters[data.playerId];
+        if (char) char.blink();
+    });
 }
 
 init();
 
-matchmakingButton.addEventListener('click', () => {
-    if (isFindingMatch) {
+createRoomButton.addEventListener('click', () => {
+    if (isQueued) {
         socket.emit('cancelMatchmaking');
-        matchmakingButton.textContent = 'Find Match';
-        matchmakingStatus.textContent = 'Matchmaking cancelled';
-        matchmakingStatus.classList.remove('searching');
-        isFindingMatch = false;
-    } else {
-        matchmakingButton.textContent = 'Cancel';
-        matchmakingStatus.textContent = 'Searching for opponent';
-        matchmakingStatus.classList.add('searching');
-        socket.emit('joinMatchmaking');
-        isFindingMatch = true;
+        resetMatchmakingUI('Room closed');
+        return;
     }
+    matchmakingStatus.textContent = 'Creating room...';
+    matchmakingStatus.classList.remove('searching');
+    socket.emit('createPrivateLobby');
 });
 
-const keys = {
-    left: { pressed: false, sent: false },
-    right: { pressed: false, sent: false },
-    up: { pressed: false, sent: false }
-};
-
-function handleMovement() {
-    if (!characters[socket.id]) return;
-    const player = characters[socket.id];
-    const speed = 5;
-    let moving = false;
-    let direction = null;
-
-    if (keys.left.pressed) {
-        player.velocity.x = -speed;
-        player.facing = 'left';
-        moving = true;
-        direction = 'left';
-    } else if (keys.right.pressed) {
-        player.velocity.x = speed;
-        player.facing = 'right';
-        moving = true;
-        direction = 'right';
-    } else {
-        player.velocity.x = 0;
+joinRoomButton.addEventListener('click', () => {
+    const code = roomCodeInput.value.trim();
+    if (!code) {
+        matchmakingStatus.textContent = 'Enter a room code to join';
+        return;
     }
+    matchmakingStatus.textContent = 'Joining room...';
+    socket.emit('joinPrivateLobby', { code });
+});
 
-    if (keys.up.pressed && !keys.up.sent && player.onGround) {
-        player.velocity.y = -15;
-        player.onGround = false;
-        socket.emit('playerJump');
-        keys.up.sent = true;
-    }
+roomCodeInput.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') joinRoomButton.click();
+});
 
-    if (moving && (!keys.left.sent || !keys.right.sent)) {
-        socket.emit('playerMove', {
-            moving: true,
-            direction: direction,
-            x: player.x,
-            y: player.y,
-            velocityX: player.velocity.x,
-            velocityY: player.velocity.y,
-            facing: player.facing
-        });
-        if (direction === 'left') keys.left.sent = true;
-        if (direction === 'right') keys.right.sent = true;
+const keys = { left: false, right: false, up: false };
+
+function sendInput() {
+    if (!socket || !characters[socket.id]) return;
+    socket.emit('playerInput', {
+        left: keys.left,
+        right: keys.right
+    });
+}
+
+function interpolateCharacters() {
+    const smoothing = 0.5;
+    for (const id in characters) {
+        const char = characters[id];
+        char.x += (char.targetX - char.x) * smoothing;
+        char.y += (char.targetY - char.y) * smoothing;
+        char.updateBlink();
     }
 }
 
-class Rock {
-    constructor() {
-        const baseRadius = 15;
-        let elapsed = rockSpawnStart ? (Date.now() - rockSpawnStart) / 1000 : 0;
-        this.radius = baseRadius + elapsed * 1;
-        this.position = { x: Math.random() * (canvas.width - 30) + 15, y: -15 };
-        this.velocity = { x: 0, y: 0 };
-        this.offScreen = false;
+function drawBackground() {
+    if (bgimg.complete && bgimg.naturalWidth > 0) {
+        c.drawImage(bgimg, 0, 0, canvas.width, canvas.height);
+        return;
     }
 
-    update() {
-        this.velocity.y += GRAVITY * 0.5;
-        this.position.y += this.velocity.y;
-        if (this.position.y - this.radius > canvas.height) this.offScreen = true;
-    }
+    const sky = c.createLinearGradient(0, 0, 0, GROUND_LEVEL);
+    sky.addColorStop(0, '#0b1d3a');
+    sky.addColorStop(1, '#3b6ea5');
+    c.fillStyle = sky;
+    c.fillRect(0, 0, canvas.width, GROUND_LEVEL);
 
-    draw(ctx) {
-        ctx.beginPath();
-        ctx.fillStyle = 'brown';
-        ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.closePath();
-    }
-
-    checkCollision(char) {
-        const rect = char.getBounds();
-        const closestX = Math.max(rect.x, Math.min(this.position.x, rect.x + rect.width));
-        const closestY = Math.max(rect.y, Math.min(this.position.y, rect.y + rect.height));
-        const dx = this.position.x - closestX;
-        const dy = this.position.y - closestY;
-        return dx * dx + dy * dy < this.radius * this.radius;
-    }
-}
-
-class FireWall {
-    constructor() {
-        this.width = 110;
-        this.height = 230;
-        this.x = Math.random() * (canvas.width - this.width);
-        this.y = canvas.height - this.height;
-        this.spawnTime = Date.now();
-        this.lifetime = 4000;
-    }
-
-    draw(ctx) {
-        const flicker = Math.random() * 30;
-        const gradient = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
-        gradient.addColorStop(0, `rgb(255, ${100 + flicker}, 0)`);
-        gradient.addColorStop(1, `rgba(255, 0, 0, 0.8)`);
-        ctx.fillStyle = gradient;
-
-        ctx.beginPath();
-        ctx.moveTo(this.x, this.y + this.height);
-        ctx.quadraticCurveTo(this.x + this.width / 2, this.y - 20, this.x + this.width, this.y + this.height);
-        ctx.closePath();
-        ctx.fill();
-    }
-
-    isExpired() {
-        return Date.now() - this.spawnTime > this.lifetime;
-    }
-
-    checkCollision(character) {
-        const r = character.getBounds();
-        const f = { x: this.x, y: this.y, width: this.width, height: this.height };
-        if (
-            r.x < f.x + f.width &&
-            r.x + r.width > f.x &&
-            r.y < f.y + f.height &&
-            r.y + r.height > f.y
-        ) {
-            const damageTaken = character.takeDamage(0.1);
-            if (damageTaken && character.id === socket.id) {
-                socket.emit('playerDamaged', {
-                    amount: 0.1,
-                    playerId: character.id
-                });
-            }
-            character.blink();
-        }
-    }
+    c.fillStyle = '#4a2f1b';
+    c.fillRect(0, GROUND_LEVEL, canvas.width, canvas.height - GROUND_LEVEL);
 }
 
 function draw() {
     c.clearRect(0, 0, canvas.width, canvas.height);
-    if (bgimg.complete) c.drawImage(bgimg, 0, 0, canvas.width, canvas.height);
+    drawBackground();
 
     for (let id in characters) characters[id].draw(c);
 
-    rocks.forEach((rock, i) => {
-        rock.update();
-        rock.draw(c);
-        Object.values(characters).forEach(char => {
-            if (rock.checkCollision(char)) {
-                const damageTaken = char.takeDamage(20);
-                if (damageTaken && char.id === socket.id) {
-                    socket.emit('playerDamaged', {
-                        amount: 20,
-                        playerId: char.id
-                    });
-                }
-                rock.offScreen = true;
-            }
-        });
+    rocks.forEach(rock => {
+        c.beginPath();
+        c.fillStyle = 'brown';
+        c.arc(rock.x, rock.y, rock.radius, 0, Math.PI * 2);
+        c.fill();
+        c.closePath();
     });
-    rocks = rocks.filter(r => !r.offScreen);
 
     fires.forEach(fire => {
-        fire.draw(c);
-        Object.values(characters).forEach(char => fire.checkCollision(char));
+        const flicker = Math.random() * 30;
+        const gradient = c.createLinearGradient(fire.x, fire.y, fire.x, fire.y + fire.height);
+        gradient.addColorStop(0, `rgb(255, ${100 + flicker}, 0)`);
+        gradient.addColorStop(1, `rgba(255, 0, 0, 0.8)`);
+        c.fillStyle = gradient;
+
+        c.beginPath();
+        c.moveTo(fire.x, fire.y + fire.height);
+        c.quadraticCurveTo(fire.x + fire.width / 2, fire.y - 20, fire.x + fire.width, fire.y + fire.height);
+        c.closePath();
+        c.fill();
     });
-    fires = fires.filter(f => !f.isExpired());
 }
 
-function gameLoop(timestamp) {
+function gameLoop() {
     if (document.getElementById('winner-text').style.display === 'block') {
         requestAnimationFrame(gameLoop);
         return;
     }
 
-    const deltaTime = timestamp - lastUpdateTime;
-    lastUpdateTime = timestamp;
-
-    if (characters[socket.id]) {
-        handleMovement();
-        characters[socket.id].update(deltaTime);
-    }
-
+    interpolateCharacters();
     draw();
     requestAnimationFrame(gameLoop);
 }
@@ -399,18 +344,17 @@ function gameLoop(timestamp) {
 function updateTimer() {
     if (document.getElementById('winner-text').style.display === 'block') return;
 
-    const timerDisplay = document.getElementById("timer").querySelector(".timer-text");
     if (timeLeft > 0) {
-        timerDisplay.innerText = `Time: ${timeLeft}s`;
+        showCountdown(timeLeft);
         timeLeft--;
-        setTimeout(updateTimer, 1000);
+        countdownTimeout = setTimeout(updateTimer, 1000);
     } else {
-        timerDisplay.innerText = "Time's up!";
-        shakeCanvas(startRockSpawning);
+        finishCountdown();
+        shakeCanvas();
     }
 }
 
-function shakeCanvas(callback) {
+function shakeCanvas() {
     let start = Date.now();
     let duration = 1000;
 
@@ -423,65 +367,45 @@ function shakeCanvas(callback) {
             requestAnimationFrame(shake);
         } else {
             canvas.style.transform = 'translate(0,0)';
-            callback && callback();
         }
     }
     shake();
 }
 
-function startRockSpawning() {
-    rockSpawnStart = Date.now();
-    spawnRockBatch();
-    rockInterval = setInterval(spawnRockBatch, 2000);
-    setTimeout(() => {
-        clearInterval(rockInterval);
-        fireInterval = setInterval(() => {
-            fires.push(new FireWall());
-        }, 3000);
-    }, 10000);
-}
-
-function spawnRockBatch() {
-    let elapsed = rockSpawnStart ? (Date.now() - rockSpawnStart) / 1000 : 0;
-    const baseRocks = 2;
-    const additionalRocks = Math.min(5, Math.floor(elapsed / 10));
-    for (let i = 0; i < baseRocks + additionalRocks; i++) {
-        rocks.push(new Rock());
-    }
-}
-
 window.addEventListener('keydown', (e) => {
     if (!characters[socket.id]) return;
-    switch(e.key) {
-        case 'a':
+    switch(e.code) {
+        case 'KeyA':
         case 'ArrowLeft':
-            keys.left.pressed = true;
-            keys.left.sent = false;
+            keys.left = true;
+            sendInput();
             break;
-        case 'd':
+        case 'KeyD':
         case 'ArrowRight':
-            keys.right.pressed = true;
-            keys.right.sent = false;
+            keys.right = true;
+            sendInput();
             break;
-        case 'w':
+        case 'KeyW':
         case 'ArrowUp':
-            if (!keys.up.pressed) {
-                keys.up.pressed = true;
-                keys.up.sent = false;
+            if (!keys.up) {
+                keys.up = true;
+                socket.emit('playerJump');
             }
             break;
-        case 'f': // Punch
+        case 'KeyF': // Punch
             socket.emit('attack');
             characters[socket.id].attack(); 
             break;
-        case 'g': // Kick
+        case 'KeyG': // Kick
             socket.emit('kick');
             characters[socket.id].kick(); 
             break;
-        case 'h': // Block
+        case 'KeyH': // Block
+            socket.emit('block');
             characters[socket.id].block();
             break;
-        case 'j': // Dodge
+        case 'KeyJ': // Dodge
+            socket.emit('dodge');
             characters[socket.id].dodge();
             break;
     }
@@ -489,42 +413,31 @@ window.addEventListener('keydown', (e) => {
 
 window.addEventListener('keyup', (e) => {
     if (!characters[socket.id]) return;
-    switch(e.key) {
-        case 'a':
+    switch(e.code) {
+        case 'KeyA':
         case 'ArrowLeft':
-            keys.left.pressed = false;
-            socket.emit('playerMove', {
-                moving: false,
-                direction: 'left',
-                x: characters[socket.id].x,
-                y: characters[socket.id].y,
-                velocityX: 0,
-                velocityY: characters[socket.id].velocity.y,
-                facing: characters[socket.id].facing
-            });
+            keys.left = false;
+            sendInput();
             break;
-        case 'd':
+        case 'KeyD':
         case 'ArrowRight':
-            keys.right.pressed = false;
-            socket.emit('playerMove', {
-                moving: false,
-                direction: 'right',
-                x: characters[socket.id].x,
-                y: characters[socket.id].y,
-                velocityX: 0,
-                velocityY: characters[socket.id].velocity.y,
-                facing: characters[socket.id].facing
-            });
+            keys.right = false;
+            sendInput();
             break;
-        case 'w':
+        case 'KeyW':
         case 'ArrowUp':
-            keys.up.pressed = false;
+            keys.up = false;
             break;
     }
 });
 
-bgimg.onload = () => {
+let loopStarted = false;
+function startGameLoop() {
+    if (loopStarted) return;
+    loopStarted = true;
     requestAnimationFrame(gameLoop);
-};
+}
+
+startGameLoop();
 
 

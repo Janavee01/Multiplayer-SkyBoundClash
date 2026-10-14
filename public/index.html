@@ -4,71 +4,71 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Skybound Clash</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
   <style>
+    @font-face {
+      font-family: 'Cinzel';
+      font-style: normal;
+      font-weight: 400 900;
+      font-display: swap;
+      src: url('/fonts/cinzel-latin.woff2') format('woff2');
+    }
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
+    html, body {
+      height: 100%;
+      width: 100%;
+    }
     body {
-      transform: scale(0.7);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
       background-color: black;
       font-family: Arial, sans-serif;
       color: #fff;
+      gap: 6px;
+      padding: 8px;
     }
     .title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 60px;
+      font-family: 'Cinzel', 'Segoe UI', Tahoma, Verdana, sans-serif;
+      font-size: clamp(20px, 3.5vh, 44px);
       font-weight: bold;
       text-transform: uppercase;
       color: orange;
       -webkit-text-fill-color: transparent;
       letter-spacing: 5px;
       text-shadow: 0 0 5px orangered, 0 0 2px red;
+      flex: 0 0 auto;
     }
     .game-container {
-      width: 1024px;
-      max-width: 95%;
-      margin: 20px auto;
       position: relative;
-    }
-    .header {
       display: flex;
       flex-direction: column;
       align-items: center;
-      margin-bottom: 10px;
+      width: fit-content;
+      max-width: 100%;
+      flex: 0 1 auto;
     }
-    #timer {
-      transform: scale(0.86);
-      font-size: 24px;
-      color: black;
-      margin-bottom: 10px;
-      padding: 8px 15px 8px 50px;
-      background-color: blanchedalmond;
-      border: 2px solid grey; 
-      border-radius: 8px;
+    .header {
+      position: absolute;
+      top: 10px;
+      left: 0;
+      width: 100%;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
-      background-image: url('https://cdn-icons-png.flaticon.com/128/3240/3240627.png');
-      background-repeat: no-repeat;
-      background-position: 10px center;
-      background-size: 24px 24px; 
-    }
-    .timer-text {
-      font-weight: bold;
+      z-index: 10;
+      pointer-events: none;
     }
     .health-container {
       display: flex;
       justify-content: space-between;
       width: 100%;
-      max-width: 1024px;
       margin-bottom: 10px;
     }
     .health-bar-wrapper {
@@ -96,37 +96,110 @@
       background-color: red;
     }
 
-    .health-bar::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      height: 100%;
-      width: 100%;
-      background-color: limegreen;
-      transition: width 0.2s ease-in-out;
-    }
-
     canvas {
       display: block;
-      width: 100%;
+      width: min(98vw, calc(92vh * 16 / 9));
+      height: auto;
+      aspect-ratio: 16 / 9;
       border: 2px solid white;
       background-color: black;
     }
 
     #winner-text {
-      font-size: 2rem;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       color: #fff;
       text-align: center;
-      margin-top: 10px;
       display: none;
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Cinzel', 'Segoe UI', Tahoma, Verdana, sans-serif;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 2px;
       text-shadow: 0 0 10px rgba(255, 215, 0, 0.7), 0 0 20px rgba(255, 215, 0, 0.5);
       padding: 15px;
       border-radius: 8px;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    #countdown {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 40;
+      opacity: 1;
+      transition: opacity 0.6s ease;
+      background: radial-gradient(ellipse at center,
+        rgba(24, 12, 9, 0) 32%,
+        rgba(24, 12, 9, 0.35) 70%,
+        rgba(24, 12, 9, 0.72) 100%);
+    }
+    #countdown.show {
+      display: flex;
+    }
+    #countdown.fade {
+      opacity: 0;
+    }
+
+    #countdown-number {
+      font-family: 'Cinzel', 'Segoe UI', serif;
+      font-weight: 900;
+      font-size: clamp(76px, 26vh, 230px);
+      line-height: 1;
+      color: #f6e6c8;
+      letter-spacing: 0.04em;
+      text-shadow:
+        0 0 10px rgba(246, 230, 200, 0.5),
+        0 6px 0 #7e4a34,
+        0 12px 28px rgba(0, 0, 0, 0.75),
+        0 0 52px rgba(206, 88, 74, 0.65);
+    }
+    #countdown-number.tick {
+      animation: countdown-pop 0.45s ease-out;
+    }
+    @keyframes countdown-pop {
+      0% { transform: scale(1.35); opacity: 0.15; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    #countdown-label {
+      margin-top: 10px;
+      font-family: 'Cinzel', 'Segoe UI', serif;
+      font-weight: 700;
+      font-size: clamp(12px, 2.4vh, 20px);
+      letter-spacing: 0.38em;
+      text-transform: uppercase;
+      color: #eccfa4;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+    }
+
+    #countdown.flash #countdown-number {
+      color: #ffd9a8;
+      animation: countdown-alarm 0.5s ease-in-out infinite alternate;
+    }
+    @keyframes countdown-alarm {
+      from {
+        transform: scale(1);
+        text-shadow:
+          0 0 10px rgba(246, 230, 200, 0.5),
+          0 6px 0 #7e4a34,
+          0 12px 28px rgba(0, 0, 0, 0.75),
+          0 0 52px rgba(206, 88, 74, 0.65);
+      }
+      to {
+        transform: scale(1.09);
+        text-shadow:
+          0 0 20px rgba(255, 220, 170, 0.95),
+          0 6px 0 #7e4a34,
+          0 14px 32px rgba(0, 0, 0, 0.85),
+          0 0 90px rgba(206, 88, 74, 1);
+      }
     }
 
     #matchmaking-container {
@@ -143,20 +216,60 @@
       transition: opacity 0.3s ease;
     }
 
-    #matchmaking-button {
-      padding: 10px 20px;
-      font-size: 18px;
+    #matchmaking-status {
       margin: 10px;
+      font-size: 16px;
+    }
+
+    #room-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .room-join {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    #room-code-input {
+      padding: 10px 12px;
+      font-size: 16px;
+      width: 150px;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      border: none;
+      border-radius: 5px;
+    }
+
+    #create-room-button,
+    #join-room-button {
+      padding: 10px 20px;
+      font-size: 16px;
       cursor: pointer;
-      background-color: #4CAF50;
+      background-color: #2196F3;
       color: white;
       border: none;
       border-radius: 5px;
     }
 
-    #matchmaking-status {
-      margin: 10px;
-      font-size: 16px;
+    #create-room-button:hover,
+    #join-room-button:hover {
+      background-color: #1976D2;
+    }
+
+    #room-code-display {
+      display: none;
+      margin-top: 12px;
+      font-size: 20px;
+      font-weight: bold;
+      letter-spacing: 3px;
+      color: gold;
     }
 
     @media (max-width: 768px) {
@@ -166,9 +279,6 @@
       }
       .health-bar-wrapper {
         width: 80%;
-      }
-      canvas {
-        width: 95%;
       }
     }
 
@@ -185,20 +295,22 @@
   </style>
 </head>
 <body>
-  <br><br>
-  <div class="title">Skybound Clash</div><br><br><br>
+  <div class="title">Skybound Clash</div>
   
   <div id="matchmaking-container">
-    <button id="matchmaking-button">Find Match</button>
-    <div id="matchmaking-status">Press "Find Match" to begin</div>
+    <div id="matchmaking-status">Create a private room or join one with a code</div>
+    <div id="room-controls">
+      <button id="create-room-button">Create Private Room</button>
+      <div class="room-join">
+        <input id="room-code-input" type="text" maxlength="6" placeholder="ROOM CODE" autocomplete="off" spellcheck="false" />
+        <button id="join-room-button">Join</button>
+      </div>
+    </div>
+    <div id="room-code-display"></div>
   </div>
 
   <div class="game-container">
     <div class="header">
-      <div id="timer">
-        <span class="timer-text">Time: 10s</span>
-      </div>
-
       <div class="health-container">
         <div class="health-bar-wrapper">
           <span class="text">Player</span>
@@ -212,8 +324,12 @@
       </div>
     </div>
 
-    <canvas></canvas><br><br>
-    <h1 id="winner-text" style="display: none; font-size: 72px; text-align: center; text-shadow: 0 0 10px black;"></h1>
+    <canvas></canvas>
+    <div id="countdown">
+      <span id="countdown-number">10</span>
+      <span id="countdown-label">Hazards incoming</span>
+    </div>
+    <h1 id="winner-text" style="display: none; font-size: clamp(32px, 8vh, 72px); text-shadow: 0 0 10px black;"></h1>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
